@@ -72,6 +72,18 @@ public:
             }
         }
     }
+    std::vector<std::string> GetInputs() {
+        if (inputs.size() <= 0) std::cerr << "Inputs contains nothing." << std::endl;
+        return inputs;
+    }
+    std::vector<std::string> GetOutputs() {
+        if (outputs.size() <= 0) std::cerr << "Outputs contains nothing." << std::endl;
+        return outputs;
+    }
+    std::vector<Gate> GetGates() {
+        if (gates.size() <= 0)std::cerr << "Gates contains nothing." << std::endl;
+        return gates;
+    }
 	~BLIFParser();
 
 private:

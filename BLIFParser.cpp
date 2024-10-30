@@ -6,6 +6,7 @@
 #include <cctype>
 #include <algorithm>
 #include <sstream>
+#include <set>
 
 struct Gate
 {
@@ -72,6 +73,111 @@ public:
             }
         }
     }
+    void GenerateVerilog(const std::string& verilogName) const {
+        std::ofstream verilogFile(verilogName);
+        if (!verilogFile.is_open()) {
+            std::cerr << "Failed to open the verilog file" << verilogName << std::endl;
+            return;
+        }
+
+        //模块名及后面所在一行
+        verilogFile << "module " << current_model << "(clk, rst,";
+        for (size_t i = 0; i < outputs.size(); i++) {
+            verilogFile << " " << outputs[i];
+            if (i != outputs.size() - 1 || !inputs.empty()) {
+                verilogFile << ",";
+            }
+        }
+        for (size_t i = 0; i < inputs.size(); i++) {
+            verilogFile << " " << inputs[i];
+            if (i != inputs.size() - 1) {
+                verilogFile << ",";
+            }
+            else {
+                verilogFile << ");" << std::endl;
+            }
+        }
+
+        verilogFile << "input clk, rst;" << std::endl;
+
+        for (const auto& output : outputs) {
+            verilogFile << "output " << output << ";" << std::endl;
+        }
+        for (const auto& input : inputs) {
+            verilogFile << "input " << input << ";" << std::endl;
+        }
+        verilogFile << '\n';
+
+        std::set<std::string> setter;
+        std::vector<std::string> temp;
+        std::vector<std::string> tempGateOutputs;
+
+        for (const auto& g : gates) {
+            tempGateOutputs.push_back(g.output);
+        }
+
+        //存入不重复的wire
+        for (const auto& input : inputs) {
+            temp.push_back(input);
+            setter.insert(input);
+        }
+        for (const auto& output : outputs) {
+            temp.push_back(output);
+            setter.insert(output);
+        }
+        for (const auto& gateOutput : tempGateOutputs) {
+            if (setter.find(gateOutput) == setter.end()) {
+                temp.push_back(gateOutput);
+                setter.insert(gateOutput);
+            }
+        }
+
+        for (const auto& t : temp) {
+            verilogFile << "wire " << t << ";" << std::endl;
+        }
+        verilogFile << '\n';
+
+        for (const auto& g : gates) {
+            verilogFile << "assign " << g.output << " = ";
+            bool isFirstLine = true;
+            
+            for (const auto& t : g.truth_table) {
+                std::istringstream iss(t);
+                std::string inputValues, outputValue;
+                iss >> inputValues >> outputValue;
+
+                if (outputValue == "1") {
+                    if (!isFirstLine) verilogFile << " | ";
+                    bool isFirstInput = true;
+                    for (size_t i = 0; i < g.inputs.size(); i++) {
+                        if (inputValues[i] == '1') {
+                            if (!isFirstInput) verilogFile << " & ";
+                            verilogFile << g.inputs[i];
+                            isFirstInput = false;
+                        }
+                        else if (inputValues[i] == '0') {
+                            if (!isFirstInput)verilogFile << "&";
+                            verilogFile << "!" << g.inputs[i];
+                            isFirstInput = false;
+                        }
+                        else {
+                            continue;//为“-”的情况
+                        }
+                    }
+                }
+                isFirstLine = false;
+            }
+            verilogFile << ";" << std::endl;
+        }
+
+        verilogFile << '\n';
+        verilogFile << "endmodule" << std::endl;
+
+        verilogFile.close();
+    }
+
+#pragma region  外部获取函数
+
     std::vector<std::string> GetInputs() {
         if (inputs.size() <= 0) std::cerr << "Inputs contains nothing." << std::endl;
         return inputs;
@@ -84,6 +190,9 @@ public:
         if (gates.size() <= 0)std::cerr << "Gates contains nothing." << std::endl;
         return gates;
     }
+
+#pragma endregion
+
 	~BLIFParser();
 
 private:
@@ -93,6 +202,7 @@ private:
     std::vector<Gate> gates;
     Gate current_gate;
 
+#pragma region 数据存入部分
 
     //去除空格
     std::string Trim(const std::string& str) {
@@ -139,6 +249,8 @@ private:
         current_gate.output = current_gate.inputs.back(); //最后一个信号是输出
         current_gate.inputs.pop_back(); // 从inputs 中移除输出
     }
+
+#pragma endregion
     
 };
 
@@ -151,6 +263,8 @@ int main() {
     BLIFParser parser;
     if (parser.Parse("test1.blif")) {
         parser.Print();
+
+        parser.GenerateVerilog("TestDoc.v");
     }
     return 0;
 }

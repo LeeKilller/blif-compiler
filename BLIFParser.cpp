@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <sstream>
 #include <set>
+#include <map>
 
 struct Gate
 {
@@ -73,6 +74,14 @@ public:
             }
         }
     }
+
+
+#pragma region 转换部分
+
+    /// <summary>
+    /// .v文件转化
+    /// </summary>
+    /// <param name="verilogName"></param>
     void GenerateVerilog(const std::string& verilogName) const {
         std::ofstream verilogFile(verilogName);
         if (!verilogFile.is_open()) {
@@ -140,7 +149,7 @@ public:
         for (const auto& g : gates) {
             verilogFile << "assign " << g.output << " = ";
             bool isFirstLine = true;
-            
+
             for (const auto& t : g.truth_table) {
                 std::istringstream iss(t);
                 std::string inputValues, outputValue;
@@ -175,6 +184,95 @@ public:
 
         verilogFile.close();
     }
+    /// <summary>
+    /// .dot文件转换
+    /// </summary>
+    /// <param name="dotFileName"></param>
+    void GenerateDotFile(const std::string& dotFileName) const {
+        std::ofstream dotFile(dotFileName);
+
+        if (!dotFile.is_open()) {
+            std::cerr << "Failed to create the DOT file: " << dotFileName << std::endl;
+            return;
+        }
+
+        std::vector<std::string> allNodes;
+        std::map<std::string, size_t> nodeIndexMap;
+
+        // 收集所有唯一的节点
+        for (const auto& input : inputs) {
+            allNodes.push_back(input);
+            nodeIndexMap[input] = allNodes.size() - 1;
+        }
+        for (const auto& output : outputs) {
+            if (nodeIndexMap.find(output) == nodeIndexMap.end()) {
+                allNodes.push_back(output);
+                nodeIndexMap[output] = allNodes.size() - 1;
+            }
+        }
+        for (const auto& gate : gates) {
+            if (nodeIndexMap.find(gate.output) == nodeIndexMap.end()) {
+                allNodes.push_back(gate.output);
+                nodeIndexMap[gate.output] = allNodes.size() - 1;
+            }
+        }
+
+        dotFile << "digraph " << current_model << " {" << std::endl;
+        dotFile << "rankdir=\"LR\"" << std::endl; // 从左到右布局
+        dotFile << "node [shape=\"house\" orientation=\"270\"]" << std::endl;
+        dotFile << "size=\"10,7.5\"" << std::endl;
+
+        // 定义输入节点
+        for (size_t i = 0; i < inputs.size(); ++i) {
+            dotFile << "g" << i << " [label=\"" << i << ":" << inputs[i] << "\" style=filled color=palegreen1 shape=house orientation=-90]\n";
+            dotFile << "g" << i << "o [shape=point]\n";
+            dotFile << "g" << i << " -> g" << i << "o [arrowhead=none arrowtail=none]\n";
+        }
+
+        // 定义输出节点及其相关边
+        for (size_t i = 0; i < outputs.size(); ++i) {
+            size_t index = nodeIndexMap[outputs[i]];
+            dotFile << "g" << index << " [label=\"" << index << ":" << outputs[i] << "\" shape=house orientation=-90 style=filled color=pink1]\n";
+
+            // 查找输出节点对应的中间节点
+            for (const auto& gate : gates) {
+                if (gate.output == outputs[i]) {
+                    for (size_t k = 0; k < gate.inputs.size(); ++k) {
+                        auto inputIndex = nodeIndexMap[gate.inputs[k]];
+                        dotFile << "g" << inputIndex << "o -> g" << index << " [arrowhead=";
+                        if (gate.truth_table[0].starts_with("1")) dotFile << "none]";
+                        else if (gate.truth_table[0].starts_with("0")) dotFile << "odot]";
+                        dotFile << std::endl;
+                    }
+                }
+            }
+        }
+
+        // 定义中间节点及边
+        for (size_t i = 0; i < gates.size(); ++i) {
+            if (std::find(outputs.begin(), outputs.end(), gates[i].output) == outputs.end()) {
+                size_t index = nodeIndexMap[gates[i].output];
+                dotFile << "g" << index << " [label=\"" << index << ":" << gates[i].output << "\"]\n";
+                dotFile << "g" << index << "o [shape=point]\n";
+                dotFile << "g" << index << " -> g" << index << "o [arrowhead=none arrowtail=";
+                if (gates[i].truth_table.size() > 1)dotFile << "odot]" << std::endl;
+                else dotFile << "none]" << std::endl;
+
+                for (const auto& input : gates[i].inputs) {
+                    size_t inputIndex = nodeIndexMap[input];
+                    dotFile << "g" << inputIndex << "o-> g" << index << " [arrowhead=";
+                    if (gates[i].truth_table.size() > 1)dotFile << "odot]" << std::endl;
+                    else dotFile << "none]" << std::endl;
+                }
+            }
+        }
+
+
+        dotFile << "}" << std::endl;
+        dotFile.close();
+    }
+
+#pragma endregion
 
 #pragma region  外部获取函数
 
@@ -251,6 +349,7 @@ private:
     }
 
 #pragma endregion
+
     
 };
 
@@ -265,6 +364,7 @@ int main() {
         parser.Print();
 
         parser.GenerateVerilog("TestDoc.v");
+        parser.GenerateDotFile("TestDoc.dot");
     }
     return 0;
 }
